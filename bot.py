@@ -117,13 +117,14 @@ def _id_col() -> str:
 # БАЗА ДАННЫХ
 # ──────────────────────────────────────────────
 def init_db():
-    id_col = _id_col()
+    id_col      = _id_col()
+    uid_type    = "BIGINT" if DATABASE_URL else "INTEGER"
     conn = _get_conn()
     c = conn.cursor()
     c.execute(f"""
         CREATE TABLE IF NOT EXISTS orders (
             id          {id_col},
-            user_id     INTEGER,
+            user_id     {uid_type},
             username    TEXT,
             full_name   TEXT,
             phone       TEXT,
@@ -136,9 +137,9 @@ def init_db():
             created_at  TEXT
         )
     """)
-    c.execute("""
+    c.execute(f"""
         CREATE TABLE IF NOT EXISTS users (
-            user_id      INTEGER PRIMARY KEY,
+            user_id      {uid_type} PRIMARY KEY,
             username     TEXT,
             full_name    TEXT,
             phone        TEXT,
@@ -160,11 +161,19 @@ def init_db():
         )
     """)
     conn.commit()
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN address TEXT")
-        conn.commit()
-    except Exception:
-        conn.rollback()
+    # Миграции существующих таблиц
+    for migration in [
+        "ALTER TABLE users ADD COLUMN address TEXT",
+        "ALTER TABLE orders ALTER COLUMN user_id TYPE BIGINT" if DATABASE_URL else "",
+        "ALTER TABLE users  ALTER COLUMN user_id TYPE BIGINT" if DATABASE_URL else "",
+    ]:
+        if not migration:
+            continue
+        try:
+            c.execute(migration)
+            conn.commit()
+        except Exception:
+            conn.rollback()
     conn.close()
 
 
