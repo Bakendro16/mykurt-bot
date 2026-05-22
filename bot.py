@@ -959,12 +959,25 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_price = total_units * PRICE_PER_UNIT
     filtered    = {k: v for k, v in cart.items() if v > 0}
 
-    order_id = save_order(
-        user_id=user.id, username=user.username or "",
-        full_name=name, phone=phone, address=address,
-        items=filtered, total_units=total_units,
-        bonus_units=bonus, total_price=total_price
-    )
+    try:
+        order_id = save_order(
+            user_id=user.id, username=user.username or "",
+            full_name=name, phone=phone, address=address,
+            items=filtered, total_units=total_units,
+            bonus_units=bonus, total_price=total_price
+        )
+    except Exception as e:
+        logger.error(f"save_order error: {e}", exc_info=True)
+        await safe_edit(
+            query,
+            "⚠️ Не удалось сохранить заказ\\. Попробуйте ещё раз или напишите нам\\.",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Попробовать снова", callback_data="confirm_yes")],
+                [InlineKeyboardButton("🏠 Главное меню",      callback_data="back_main")],
+            ])
+        )
+        return
 
     sheets_url = ""
     try:
@@ -990,16 +1003,20 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data.clear()
 
-    order_row  = get_order(order_id)
-    admin_text = format_admin_order(*order_row) + sheets_url
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                admin_id, admin_text,
-                reply_markup=admin_order_keyboard(order_id)
-            )
-        except Exception as e:
-            logger.error(f"Admin notify error (id={admin_id}): {e}")
+    try:
+        order_row  = get_order(order_id)
+        if order_row:
+            admin_text = format_admin_order(*order_row) + sheets_url
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(
+                        admin_id, admin_text,
+                        reply_markup=admin_order_keyboard(order_id)
+                    )
+                except Exception as e:
+                    logger.error(f"Admin notify error (id={admin_id}): {e}")
+    except Exception as e:
+        logger.error(f"Admin notify block error: {e}", exc_info=True)
 
 
 async def show_my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
