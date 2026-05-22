@@ -988,16 +988,7 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    sheets_url = ""
-    try:
-        sm = SheetsManager(_CREDS_SOURCE, SPREADSHEET_ID)
-        sm.add_order(order_id, user.id, user.username or "", name,
-                     phone, address, filtered, total_units, bonus, total_price)
-        sm.refresh_dashboard(DB_FILE, DATABASE_URL)
-        sheets_url = f"\n\nhttps://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}"
-    except Exception as e:
-        logger.error(f"Sheets save error: {e}")
-
+    # ── Сразу показываем успех пользователю ──────────────────────────
     bonus_text = f"\n🎁 *Бонус:* \\+{bonus} шт бесплатно\\!" if bonus > 0 else ""
     await safe_edit(
         query,
@@ -1012,10 +1003,11 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data.clear()
 
+    # ── Уведомление админу (async, не блокирует) ──────────────────────
     try:
-        order_row  = get_order(order_id)
+        order_row = get_order(order_id)
         if order_row:
-            admin_text = format_admin_order(*order_row) + sheets_url
+            admin_text = format_admin_order(*order_row)
             for admin_id in ADMIN_IDS:
                 try:
                     await context.bot.send_message(
@@ -1026,6 +1018,24 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.error(f"Admin notify error (id={admin_id}): {e}")
     except Exception as e:
         logger.error(f"Admin notify block error: {e}", exc_info=True)
+
+    # ── Google Sheets — в отдельном потоке, не блокирует event loop ───
+    _oid = order_id
+    _uid = user.id
+    _uname = user.username or ""
+    _filtered = dict(filtered)
+
+    def _sheets_sync():
+        try:
+            sm = SheetsManager(_CREDS_SOURCE, SPREADSHEET_ID)
+            sm.add_order(_oid, _uid, _uname, name,
+                         phone, address, _filtered, total_units, bonus, total_price)
+            sm.refresh_dashboard(DB_FILE, DATABASE_URL)
+            logger.info(f"Sheets обновлены для заказа #{_oid}")
+        except Exception as e:
+            logger.error(f"Sheets save error (заказ #{_oid}): {e}", exc_info=True)
+
+    asyncio.create_task(asyncio.to_thread(_sheets_sync))
 
 
 async def show_my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1173,10 +1183,14 @@ async def admin_syncsheets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return
     msg = await update.message.reply_text("⏳ Синхронизирую с Google Sheets...")
-    try:
+    url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}"
+
+    def _sync():
         sm = SheetsManager(_CREDS_SOURCE, SPREADSHEET_ID)
         sm.rebuild_from_db(DB_FILE, DATABASE_URL)
-        url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}"
+
+    try:
+        await asyncio.to_thread(_sync)
         await msg.edit_text(f"✅ Готово! Все данные синхронизированы.\n\n{url}")
     except Exception as e:
         logger.error(f"Syncsheets error: {e}", exc_info=True)
