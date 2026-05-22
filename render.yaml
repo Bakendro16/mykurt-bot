@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: mykurt-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
+        value: Kurtmy_bot
+      - key: ADMIN_IDS
+        sync: false
+      - key: SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WEBHOOK_URL
+        sync: false
