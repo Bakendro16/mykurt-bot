@@ -247,12 +247,12 @@ def save_order(user_id, username, full_name, phone, address, items,
         INSERT INTO users (user_id, username, full_name, phone, address, total_orders, total_units)
         VALUES ({ph},{ph},{ph},{ph},{ph},1,{ph})
         ON CONFLICT(user_id) DO UPDATE SET
-            total_orders = total_orders + 1,
-            total_units  = total_units + {ph},
+            total_orders = users.total_orders + 1,
+            total_units  = users.total_units + {ph},
             username     = excluded.username,
             full_name    = excluded.full_name,
-            phone        = COALESCE(excluded.phone, phone),
-            address      = COALESCE(excluded.address, address)
+            phone        = COALESCE(excluded.phone, users.phone),
+            address      = COALESCE(excluded.address, users.address)
     """, (user_id, username, full_name, phone, address, total_units, total_units))
     conn.commit()
     conn.close()
