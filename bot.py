@@ -1035,7 +1035,8 @@ async def finalize_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Sheets save error (заказ #{_oid}): {e}", exc_info=True)
 
-    asyncio.create_task(asyncio.to_thread(_sheets_sync))
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _sheets_sync)
 
 
 async def show_my_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1190,7 +1191,7 @@ async def admin_syncsheets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sm.rebuild_from_db(DB_FILE, DATABASE_URL)
 
     try:
-        await asyncio.to_thread(_sync)
+        await asyncio.get_event_loop().run_in_executor(None, _sync)
         await msg.edit_text(f"✅ Готово! Все данные синхронизированы.\n\n{url}")
     except Exception as e:
         logger.error(f"Syncsheets error: {e}", exc_info=True)
